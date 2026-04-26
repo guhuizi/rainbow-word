@@ -1236,13 +1236,15 @@ function InlinePractice({ word, syllables, onPlayAudio }) {
       {practiceType === 'speaking' && (
         <div className="text-center">
           <div className="text-3xl font-bold text-gray-800 mb-4">{word}</div>
-          <div className="text-sm text-gray-500 mb-6">点击麦克风，对准设备说出这个单词</div>
+          <div className="text-sm text-gray-500 mb-6">
+            {isRecording ? '🎤 请对准麦克风说话...' : '点击麦克风，对准设备说出这个单词'}
+          </div>
 
           <button
             onClick={() => {
-              console.log('Recording button clicked');
-              alert('录音按钮可用！开始录音...');
-              startRecording();
+              if (!isRecording) {
+                startRecording();
+              }
             }}
             disabled={isRecording}
             className={`w-20 h-20 rounded-full flex items-center justify-center text-3xl mx-auto transition-all cursor-pointer ${
@@ -1254,7 +1256,7 @@ function InlinePractice({ word, syllables, onPlayAudio }) {
             {isRecording ? '🔴' : '🎤'}
           </button>
           <div className="text-sm text-gray-400 mt-2">
-            {isRecording ? '正在录音...' : '点击录音'}
+            {isRecording ? '正在聆听，请说话...' : '点击开始录音'}
           </div>
 
           {recognizedText && (
