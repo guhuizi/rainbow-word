@@ -278,6 +278,9 @@ async function validateWord(word) {
 
 const audioCache = {};
 
+let cachedMaleVoice = null;
+let cachedFemaleVoice = null;
+
 function playAudio(audioUrl) {
   return new Promise((resolve, reject) => {
     if (!audioUrl) {
@@ -290,6 +293,42 @@ function playAudio(audioUrl) {
     audio.onerror = () => reject('Audio playback failed');
     audio.play().catch(reject);
   });
+}
+
+const voiceConfig = {
+  male: {
+    names: ['Daniel', 'David', 'Mark', 'James', 'Tom', 'Fred', 'George', 'Henry', 'Leo', 'Mike', 'Paul', 'Steve'],
+    keywords: ['male', 'man'],
+    fallbackPitch: 0.9,
+    fallbackRate: 0.85
+  },
+  female: {
+    names: ['Samantha', 'Victoria', 'Karen', 'Lucy', 'Emma', 'Anna', 'Alice', 'Beth', 'Catherine', 'Ellen', 'Jennifer', 'Julie', 'Kate', 'Linda', 'Mary', 'Nicole', 'Olivia', 'Rachel', 'Sarah', 'Sofia', 'Zira'],
+    keywords: ['female', 'woman', 'girl'],
+    fallbackPitch: 1.2,
+    fallbackRate: 0.75
+  }
+};
+
+function findBestVoice(voices, gender) {
+  const config = voiceConfig[gender];
+  
+  const exactMatch = voices.find(v => 
+    v.lang === 'en-US' && 
+    config.names.some(name => v.name.includes(name))
+  );
+  if (exactMatch) return exactMatch;
+  
+  const keywordMatch = voices.find(v => 
+    v.lang === 'en-US' && 
+    config.keywords.some(kw => v.name.toLowerCase().includes(kw))
+  );
+  if (keywordMatch) return keywordMatch;
+  
+  const usEnglishMatch = voices.find(v => v.lang === 'en-US');
+  if (usEnglishMatch) return usEnglishMatch;
+  
+  return voices[0] || null;
 }
 
 function MagicE({ children }) {
@@ -738,7 +777,9 @@ function App() {
 
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'en-US';
-    utterance.rate = isWholeWord ? 0.85 : 0.75;
+    
+    const gender = isMaleVoice ? 'male' : 'female';
+    const config = voiceConfig[gender];
 
     let voices = window.speechSynthesis.getVoices();
 
@@ -752,41 +793,14 @@ function App() {
       });
     }
 
-    if (isMaleVoice) {
-      const maleVoice = voices.find(v =>
-        v.lang === 'en-US' && (
-          v.name.toLowerCase().includes('male') ||
-          v.name.includes('Daniel') ||
-          v.name.includes('David') ||
-          v.name.includes('Mark') ||
-          v.name.includes('James') ||
-          v.name.includes('Tom') ||
-          v.name.includes('Fred')
-        )
-      );
-      if (maleVoice) {
-        utterance.voice = maleVoice;
-        utterance.pitch = 0.85;
-      } else {
-        utterance.pitch = 0.8;
-      }
+    const selectedVoice = findBestVoice(voices, gender);
+    if (selectedVoice) {
+      utterance.voice = selectedVoice;
+      utterance.pitch = config.fallbackPitch;
+      utterance.rate = isWholeWord ? config.fallbackRate : config.fallbackRate - 0.1;
     } else {
-      const femaleVoice = voices.find(v =>
-        v.lang === 'en-US' && (
-          v.name.includes('Female') ||
-          v.name.includes('Samantha') ||
-          v.name.includes('Victoria') ||
-          v.name.includes('Karen') ||
-          v.name.includes('Lucy') ||
-          v.name.includes('Emma')
-        )
-      );
-      if (femaleVoice) {
-        utterance.voice = femaleVoice;
-        utterance.pitch = 1.2;
-      } else {
-        utterance.pitch = 1.1;
-      }
+      utterance.pitch = config.fallbackPitch;
+      utterance.rate = isWholeWord ? config.fallbackRate : config.fallbackRate - 0.1;
     }
 
     utterance.onstart = () => setIsPlaying(true);
