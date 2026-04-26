@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { syllabify, getColorForSyllable, analyzeSyllableFeatures, analyzePhoneticRules, getDefaultPhonetic } from './utils/syllableUtils'
 
@@ -1028,10 +1028,6 @@ function InlinePractice({ word, syllables, onPlayAudio }) {
   const [userAnswer, setUserAnswer] = useState('');
   const [showResult, setShowResult] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
-  const [speakingScore, setSpeakingScore] = useState(null);
-  const [isRecording, setIsRecording] = useState(false);
-  const [recognizedText, setRecognizedText] = useState('');
-  const recognitionRef = useRef(null);
 
   const checkAnswer = () => {
     if (!userAnswer.trim()) return;
@@ -1049,141 +1045,10 @@ function InlinePractice({ word, syllables, onPlayAudio }) {
     setShowResult(true);
   };
 
-  const calculateSimilarity = (str1, str2) => {
-    const s1 = str1.toLowerCase().trim();
-    const s2 = str2.toLowerCase().trim();
-
-    if (s1 === s2) return 100;
-    if (s1.length === 0 || s2.length === 0) return 0;
-
-    const longer = s1.length > s2.length ? s1 : s2;
-    const shorter = s1.length > s2.length ? s2 : s1;
-
-    const longerLength = longer.length;
-    const editDistance = levenshteinDistance(longer, shorter);
-
-    return Math.round((longerLength - editDistance) / longerLength * 100);
-  };
-
-  const levenshteinDistance = (str1, str2) => {
-    const matrix = [];
-    for (let i = 0; i <= str2.length; i++) {
-      matrix[i] = [i];
-    }
-    for (let j = 0; j <= str1.length; j++) {
-      matrix[0][j] = j;
-    }
-    for (let i = 1; i <= str2.length; i++) {
-      for (let j = 1; j <= str1.length; j++) {
-        if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
-          matrix[i][j] = matrix[i - 1][j - 1];
-        } else {
-          matrix[i][j] = Math.min(
-            matrix[i - 1][j - 1] + 1,
-            matrix[i][j - 1] + 1,
-            matrix[i - 1][j] + 1
-          );
-        }
-      }
-    }
-    return matrix[str2.length][str1.length];
-  };
-
-  const startRecording = () => {
-    console.log('1. startRecording called');
-
-    if (!window.isSecureContext) {
-      alert('语音识别需要 HTTPS 连接，请确保网站使用安全连接');
-      return;
-    }
-    console.log('2. HTTPS check passed');
-
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      alert('您的浏览器不支持语音识别，请使用 Chrome 或 Edge 浏览器');
-      return;
-    }
-    console.log('3. SpeechRecognition available');
-
-    if (recognitionRef.current) {
-      recognitionRef.current.abort();
-    }
-    console.log('4. Previous recognition aborted');
-
-    setIsRecording(true);
-    setRecognizedText('');
-    setSpeakingScore(null);
-    console.log('5. State reset');
-
-    navigator.mediaDevices.getUserMedia({ audio: true })
-      .then(() => {
-        console.log('6. Microphone permission granted');
-        const recognition = new SpeechRecognition();
-        recognitionRef.current = recognition;
-        recognition.lang = 'en-US';
-        recognition.continuous = true;
-        recognition.interimResults = true;
-        recognition.maxAlternatives = 1;
-
-        recognition.onresult = (event) => {
-          console.log('7. Recognition result received', event.results);
-          const results = event.results;
-          const transcript = results[results.length - 1][0].transcript.trim();
-          setRecognizedText(transcript);
-
-          if (results[results.length - 1].isFinal) {
-            const finalTranscript = transcript;
-            const score = calculateSimilarity(finalTranscript, word);
-            setSpeakingScore(score);
-            setShowResult(true);
-            setIsCorrect(score >= 80);
-            recognition.stop();
-          }
-        };
-
-        recognition.onerror = (event) => {
-          console.error('8. Speech recognition error:', event.error);
-          setIsRecording(false);
-          recognitionRef.current = null;
-          if (event.error === 'not-allowed') {
-            alert('请允许麦克风权限后重试');
-          } else if (event.error === 'no-speech') {
-            console.log('No speech detected, try again');
-          } else if (event.error === 'aborted') {
-            console.log('Recognition aborted by user');
-          } else {
-            console.log('Speech recognition error:', event.error);
-          }
-        };
-
-        recognition.onend = () => {
-          console.log('9. Recognition ended');
-          setIsRecording(false);
-          recognitionRef.current = null;
-        };
-
-        console.log('10. About to start recognition');
-        recognition.start();
-        console.log('11. Recognition started');
-      })
-      .catch((err) => {
-        console.error('12. Microphone access error:', err);
-        setIsRecording(false);
-        recognitionRef.current = null;
-        if (err.name === 'NotAllowedError') {
-          alert('请允许麦克风权限后重试');
-        } else {
-          alert('无法访问麦克风: ' + err.message);
-        }
-      });
-  };
-
   const handleNext = () => {
     setUserAnswer('');
     setShowResult(false);
     setIsCorrect(false);
-    setSpeakingScore(null);
-    setRecognizedText('');
   };
 
   return (
@@ -1200,12 +1065,6 @@ function InlinePractice({ word, syllables, onPlayAudio }) {
           className={`px-3 py-1 rounded-full text-sm ${practiceType === 'spelling' ? 'bg-rainbow-blue text-white' : 'bg-gray-100 text-gray-600'}`}
         >
           ✏️ 拼写练习
-        </button>
-        <button
-          onClick={() => { setPracticeType('speaking'); handleNext(); }}
-          className={`px-3 py-1 rounded-full text-sm ${practiceType === 'speaking' ? 'bg-rainbow-blue text-white' : 'bg-gray-100 text-gray-600'}`}
-        >
-          🎤 口语测试
         </button>
       </div>
 
@@ -1241,83 +1100,31 @@ function InlinePractice({ word, syllables, onPlayAudio }) {
         </div>
       )}
 
-      {practiceType === 'speaking' && (
-        <div className="text-center">
-          <div className="text-3xl font-bold text-gray-800 mb-4">{word}</div>
-          <div className="text-sm text-gray-500 mb-6">
-            {isRecording ? '🎤 请对准麦克风说话...' : '点击麦克风，对准设备说出这个单词'}
-          </div>
-
-          <button
-            onClick={() => {
-              if (!isRecording) {
-                startRecording();
-              }
-            }}
-            disabled={isRecording}
-            className={`w-20 h-20 rounded-full flex items-center justify-center text-3xl mx-auto transition-all cursor-pointer ${
-              isRecording
-                ? 'bg-red-500 animate-pulse shadow-lg shadow-red-300'
-                : 'bg-gradient-to-r from-rainbow-blue to-rainbow-pink hover:scale-110 shadow-lg'
-            }`}
-          >
-            {isRecording ? '🔴' : '🎤'}
-          </button>
-          <div className="text-sm text-gray-400 mt-2">
-            {isRecording ? '正在聆听，请说话...' : '点击开始录音'}
-          </div>
-
-          {recognizedText && (
-            <div className="mt-4 p-3 bg-gray-50 rounded-xl">
-              <div className="text-sm text-gray-500">识别结果：</div>
-              <div className="text-xl font-bold text-gray-800">{recognizedText}</div>
-            </div>
-          )}
-        </div>
-      )}
-
       {showResult && (
         <motion.div
           initial={{ scale: 0.8, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           className={`text-center p-4 rounded-xl ${isCorrect ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}
         >
-          {practiceType === 'speaking' && speakingScore !== null ? (
-            <>
-              <div className="text-2xl font-bold mb-2">🎯 得分：{speakingScore}%</div>
-              {speakingScore >= 90 ? '✅ 发音非常棒！' : speakingScore >= 70 ? '👍 不错的发音！' : '💪 继续加油！'}
-            </>
-          ) : (
-            isCorrect ? '✅ 回答正确！' : `❌ 回答错误。答案是：${practiceType === 'syllable' ? syllables.join('-') : word}`
-          )}
+          {isCorrect ? '✅ 回答正确！' : `❌ 回答错误。答案是：${practiceType === 'syllable' ? syllables.join('-') : word}`}
         </motion.div>
       )}
 
       <div className="flex gap-2">
-        {practiceType !== 'speaking' ? (
-          !showResult ? (
-            <button
-              onClick={checkAnswer}
-              disabled={!userAnswer}
-              className="flex-1 bg-gradient-to-r from-rainbow-blue to-rainbow-pink text-white py-3 rounded-xl font-bold disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              提交答案
-            </button>
-          ) : (
-            <button
-              onClick={handleNext}
-              className="flex-1 bg-gradient-to-r from-rainbow-blue to-rainbow-pink text-white py-3 rounded-xl font-bold"
-            >
-              再试一次
-            </button>
-          )
-        ) : (
+        {!showResult ? (
           <button
-            onClick={startRecording}
-            disabled={isRecording}
+            onClick={checkAnswer}
+            disabled={!userAnswer}
             className="flex-1 bg-gradient-to-r from-rainbow-blue to-rainbow-pink text-white py-3 rounded-xl font-bold disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isRecording ? '🔴 录音中...' : '🎤 重新录音'}
+            提交答案
+          </button>
+        ) : (
+          <button
+            onClick={handleNext}
+            className="flex-1 bg-gradient-to-r from-rainbow-blue to-rainbow-pink text-white py-3 rounded-xl font-bold"
+          >
+            再试一次
           </button>
         )}
       </div>
