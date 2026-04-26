@@ -1111,7 +1111,9 @@ function InlinePractice({ word, syllables, onPlayAudio }) {
     console.log('4. Previous recognition aborted');
 
     setIsRecording(true);
-    console.log('5. isRecording set to true');
+    setRecognizedText('');
+    setSpeakingScore(null);
+    console.log('5. State reset');
 
     navigator.mediaDevices.getUserMedia({ audio: true })
       .then(() => {
@@ -1119,18 +1121,24 @@ function InlinePractice({ word, syllables, onPlayAudio }) {
         const recognition = new SpeechRecognition();
         recognitionRef.current = recognition;
         recognition.lang = 'en-US';
-        recognition.continuous = false;
-        recognition.interimResults = false;
+        recognition.continuous = true;
+        recognition.interimResults = true;
         recognition.maxAlternatives = 1;
 
         recognition.onresult = (event) => {
-          console.log('7. Recognition result received');
-          const transcript = event.results[0][0].transcript;
+          console.log('7. Recognition result received', event.results);
+          const results = event.results;
+          const transcript = results[results.length - 1][0].transcript.trim();
           setRecognizedText(transcript);
-          const score = calculateSimilarity(transcript, word);
-          setSpeakingScore(score);
-          setShowResult(true);
-          setIsCorrect(score >= 80);
+
+          if (results[results.length - 1].isFinal) {
+            const finalTranscript = transcript;
+            const score = calculateSimilarity(finalTranscript, word);
+            setSpeakingScore(score);
+            setShowResult(true);
+            setIsCorrect(score >= 80);
+            recognition.stop();
+          }
         };
 
         recognition.onerror = (event) => {
@@ -1140,11 +1148,11 @@ function InlinePractice({ word, syllables, onPlayAudio }) {
           if (event.error === 'not-allowed') {
             alert('请允许麦克风权限后重试');
           } else if (event.error === 'no-speech') {
-            alert('没有检测到语音，请对准麦克风说话');
+            console.log('No speech detected, try again');
           } else if (event.error === 'aborted') {
-            console.log('Recognition aborted');
+            console.log('Recognition aborted by user');
           } else {
-            alert('语音识别错误: ' + event.error);
+            console.log('Speech recognition error:', event.error);
           }
         };
 
