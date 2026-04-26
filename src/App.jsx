@@ -669,23 +669,54 @@ function App() {
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'en-US';
     utterance.rate = isWholeWord ? 0.85 : 0.75;
-    utterance.pitch = isMaleVoice ? 0.9 : 1.1;
 
-    const voices = window.speechSynthesis.getVoices();
-    let preferredVoice;
+    let voices = window.speechSynthesis.getVoices();
 
-    if (isMaleVoice) {
-      preferredVoice = voices.find(v =>
-        v.lang === 'en-US' && (v.name.toLowerCase().includes('male') || v.name.includes('Daniel') || v.name.includes('David') || v.name.includes('Mark') || v.name.includes('James'))
-      ) || voices.find(v => v.lang === 'en-US' && !v.name.includes('Female') && !v.name.includes('Zira') && !v.name.includes('Samantha') && !v.name.includes('Victoria'));
-    } else {
-      preferredVoice = voices.find(v =>
-        v.lang === 'en-US' && (v.name.includes('Female') || v.name.includes('Samantha') || v.name.includes('Victoria') || v.name.includes('Karen') || v.name.includes('Google') && !v.name.includes('Male'))
-      ) || voices.find(v => v.lang === 'en-US');
+    if (voices.length === 0) {
+      await new Promise(resolve => {
+        window.speechSynthesis.onvoiceschanged = () => {
+          voices = window.speechSynthesis.getVoices();
+          resolve();
+        };
+        setTimeout(resolve, 100);
+      });
     }
 
-    if (preferredVoice) {
-      utterance.voice = preferredVoice;
+    if (isMaleVoice) {
+      const maleVoice = voices.find(v =>
+        v.lang === 'en-US' && (
+          v.name.toLowerCase().includes('male') ||
+          v.name.includes('Daniel') ||
+          v.name.includes('David') ||
+          v.name.includes('Mark') ||
+          v.name.includes('James') ||
+          v.name.includes('Tom') ||
+          v.name.includes('Fred')
+        )
+      );
+      if (maleVoice) {
+        utterance.voice = maleVoice;
+        utterance.pitch = 0.85;
+      } else {
+        utterance.pitch = 0.8;
+      }
+    } else {
+      const femaleVoice = voices.find(v =>
+        v.lang === 'en-US' && (
+          v.name.includes('Female') ||
+          v.name.includes('Samantha') ||
+          v.name.includes('Victoria') ||
+          v.name.includes('Karen') ||
+          v.name.includes('Lucy') ||
+          v.name.includes('Emma')
+        )
+      );
+      if (femaleVoice) {
+        utterance.voice = femaleVoice;
+        utterance.pitch = 1.2;
+      } else {
+        utterance.pitch = 1.1;
+      }
     }
 
     utterance.onstart = () => setIsPlaying(true);
@@ -795,7 +826,7 @@ function App() {
   const handleWordClick = (wordStr, pos) => {
     setCurrentSyllable(wordStr);
     setCurrentPOS(pos);
-    speak(wordStr);
+    speak(wordStr, true, null, true);
   };
 
   const handleWordHover = (wordStr, pos) => {
