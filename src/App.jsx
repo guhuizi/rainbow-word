@@ -2,6 +2,32 @@ import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { syllabify, getColorForSyllable, analyzeSyllableFeatures, analyzePhoneticRules, getDefaultPhonetic } from './utils/syllableUtils'
 
+const STORAGE_KEY = 'rainbow_word_progress';
+
+const getInitialProgress = () => {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      return JSON.parse(saved);
+    }
+  } catch (e) {}
+  return {
+    learnedWords: [],
+    practiceHistory: [],
+    streakDays: 0,
+    lastPracticeDate: null,
+    totalPracticeCount: 0,
+    correctCount: 0,
+    achievements: []
+  };
+};
+
+const saveProgress = (progress) => {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
+  } catch (e) {}
+};
+
 const COMMON_MISSPELLINGS = {
   'hellow': 'hello',
   'wrold': 'world',
@@ -645,6 +671,50 @@ function App() {
   const [socraticFeedback, setSocraticFeedback] = useState(null);
   const [currentAudioUrl, setCurrentAudioUrl] = useState(null);
   const [practiceWord, setPracticeWord] = useState(null);
+  const [progress, setProgress] = useState(getInitialProgress);
+  const [showStats, setShowStats] = useState(false);
+
+  useEffect(() => {
+    const today = new Date().toDateString();
+    if (progress.lastPracticeDate !== today) {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const newStreak = progress.lastPracticeDate === yesterday.toDateString()
+        ? progress.streakDays + 1
+        : 1;
+      const newProgress = { ...progress, streakDays: newStreak, lastPracticeDate: today };
+      setProgress(newProgress);
+      saveProgress(newProgress);
+    }
+  }, []);
+
+  const recordPractice = (word, correct) => {
+    const today = new Date().toDateString();
+    let newProgress = { ...progress };
+
+    if (correct && !newProgress.learnedWords.includes(word)) {
+      newProgress.learnedWords = [...newProgress.learnedWords, word];
+    }
+
+    newProgress.totalPracticeCount++;
+    if (correct) newProgress.correctCount++;
+    newProgress.practiceHistory = [...newProgress.practiceHistory, { word, correct, date: Date.now() }].slice(-50);
+
+    newProgress.lastPracticeDate = today;
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (newProgress.lastPracticeDate !== yesterday.toDateString()) {
+      newProgress.streakDays = Math.max(1, newProgress.streakDays);
+    }
+
+    setProgress(newProgress);
+    saveProgress(newProgress);
+  };
+
+  const getAccuracy = () => {
+    if (progress.totalPracticeCount === 0) return 0;
+    return Math.round((progress.correctCount / progress.totalPracticeCount) * 100);
+  };
 
   const speak = useCallback(async (text, isWholeWord = false, audioUrl = null, isMaleVoice = false) => {
     setIsPlaying(true);
@@ -852,7 +922,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-bg-cream flex flex-col items-center px-3 sm:px-4 py-6 sm:py-8">
-      <header className="text-center mb-6 sm:mb-8">
+      <header className="text-center mb-6 sm:mb-8 relative">
         <motion.h1
           className="text-3xl sm:text-4xl md:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-rainbow-blue via-rainbow-pink to-rainbow-purple mb-2"
           initial={{ y: -50, opacity: 0 }}
@@ -869,7 +939,57 @@ function App() {
         >
           让背单词变得有趣又简单！
         </motion.p>
+        <button
+          onClick={() => setShowStats(!showStats)}
+          className="absolute top-0 right-0 bg-gradient-to-r from-rainbow-blue to-rainbow-pink text-white px-3 py-1 rounded-full text-sm font-bold shadow-lg hover:scale-105 transition-transform"
+        >
+          📊 {progress.streakDays > 0 ? `🔥 ${progress.streakDays}天` : '开始学习'}
+        </button>
       </header>
+
+      <AnimatePresence>
+        {showStats && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="bg-white rounded-2xl shadow-2xl p-6 mb-6 w-full max-w-lg"
+          >
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold text-gray-800">📊 学习统计</h3>
+              <button onClick={() => setShowStats(false)} className="text-gray-500 hover:text-gray-700">✕</button>
+            </div>
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div className="bg-blue-50 rounded-xl p-4 text-center">
+                <div className="text-3xl font-bold text-blue-600">{progress.learnedWords.length}</div>
+                <div className="text-sm text-gray-600">已学单词</div>
+              </div>
+              <div className="bg-orange-50 rounded-xl p-4 text-center">
+                <div className="text-3xl font-bold text-orange-600">{progress.streakDays}</div>
+                <div className="text-sm text-gray-600">连续天数 🔥</div>
+              </div>
+              <div className="bg-green-50 rounded-xl p-4 text-center">
+                <div className="text-3xl font-bold text-green-600">{progress.totalPracticeCount}</div>
+                <div className="text-sm text-gray-600">练习次数</div>
+              </div>
+              <div className="bg-purple-50 rounded-xl p-4 text-center">
+                <div className="text-3xl font-bold text-purple-600">{getAccuracy()}%</div>
+                <div className="text-sm text-gray-600">正确率</div>
+              </div>
+            </div>
+            {progress.learnedWords.length > 0 && (
+              <div>
+                <div className="text-sm font-bold text-gray-700 mb-2">已学单词：</div>
+                <div className="flex flex-wrap gap-2">
+                  {progress.learnedWords.slice(-10).map((word, i) => (
+                    <span key={i} className="bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-sm">{word}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <main className="w-full max-w-lg sm:max-w-xl md:max-w-2xl">
         <motion.div
@@ -1309,6 +1429,18 @@ function InlinePractice({ word, syllables, onPlayAudio }) {
         >
           🎤 口语测试
         </button>
+        <button
+          onClick={() => { setPracticeType('listening'); handleNext(); }}
+          className={`px-3 py-1 rounded-full text-sm ${practiceType === 'listening' ? 'bg-rainbow-blue text-white' : 'bg-gray-100 text-gray-600'}`}
+        >
+          👂 听力练习
+        </button>
+        <button
+          onClick={() => { setPracticeType('match'); handleNext(); }}
+          className={`px-3 py-1 rounded-full text-sm ${practiceType === 'match' ? 'bg-rainbow-blue text-white' : 'bg-gray-100 text-gray-600'}`}
+        >
+          🔗 连连看
+        </button>
       </div>
 
       {practiceType === 'syllable' && (
@@ -1378,6 +1510,38 @@ function InlinePractice({ word, syllables, onPlayAudio }) {
         </div>
       )}
 
+      {practiceType === 'listening' && (
+        <div className="text-center">
+          <div className="text-2xl font-bold text-blue-600 mb-4 bg-yellow-50 rounded-lg py-3">
+            🔊 播放音频
+          </div>
+          <button
+            onClick={() => onPlayAudio(word)}
+            className="w-16 h-16 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 text-white text-3xl mx-auto flex items-center justify-center shadow-lg hover:scale-110 transition-transform"
+          >
+            🔊
+          </button>
+          <div className="text-sm text-gray-500 mt-4 mb-4">听完后写下对应的单词</div>
+          <input
+            type="text"
+            value={userAnswer}
+            onChange={(e) => setUserAnswer(e.target.value)}
+            className="w-full px-4 py-2 border-2 border-gray-200 rounded-xl text-center text-lg focus:border-rainbow-blue focus:outline-none"
+            placeholder="输入单词..."
+            onKeyPress={(e) => e.key === 'Enter' && !showResult && checkAnswer()}
+          />
+        </div>
+      )}
+
+      {practiceType === 'match' && (
+        <div className="text-center">
+          <div className="text-xl font-bold text-gray-800 mb-4">
+            将单词与其音标配对
+          </div>
+          <MatchGame word={word} syllables={syllables} onSuccess={() => playSound('success')} onFail={() => playSound('fail')} />
+        </div>
+      )}
+
       {showResult && (
         <motion.div
           initial={{ scale: 0.8, opacity: 0 }}
@@ -1423,6 +1587,116 @@ function InlinePractice({ word, syllables, onPlayAudio }) {
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+function MatchGame({ word, syllables, onSuccess, onFail }) {
+  const [matches, setMatches] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [options, setOptions] = useState([]);
+
+  useEffect(() => {
+    const wordPhonetic = getDefaultPhonetic(word);
+    const syllableOptions = syllables.map(s => ({
+      text: s,
+      type: 'syllable',
+      id: `syllable-${s}`
+    }));
+
+    const fakeSyllables = ['cat', 'dog', 'run', 'jump', 'play', 'look']
+      .filter(w => w !== word)
+      .sort(() => Math.random() - 0.5)
+      .slice(0, 3)
+      .map(s => ({
+        text: s,
+        type: 'syllable',
+        id: `fake-${s}`
+      }));
+
+    const phoneticOptions = wordPhonetic ? [{
+      text: wordPhonetic,
+      type: 'phonetic',
+      id: 'phonetic-correct'
+    }] : [];
+
+    const fakePhonetics = ['/kæt/', '/dɒɡ/', '/rʌn/', '/dʒʌmp/']
+      .filter(p => p !== wordPhonetic)
+      .sort(() => Math.random() - 0.5)
+      .slice(0, 2)
+      .map(p => ({
+        text: p,
+        type: 'phonetic',
+        id: `fake-phonetic-${p}`
+      }));
+
+    const allOptions = [...syllableOptions, ...fakeSyllables, ...phoneticOptions, ...fakePhonetics]
+      .sort(() => Math.random() - 0.5);
+
+    setOptions(allOptions);
+    setMatches([]);
+    setSelected(null);
+  }, [word, syllables]);
+
+  const handleSelect = (option) => {
+    if (matches.includes(option.id)) return;
+
+    if (!selected) {
+      setSelected(option);
+    } else {
+      if (selected.text === word && option.text === getDefaultPhonetic(word)) {
+        setMatches([...matches, selected.id, option.id]);
+        onSuccess?.();
+      } else if (selected.type === 'syllable' && selected.text === word) {
+        const phoneticCorrect = options.find(o => o.text === getDefaultPhonetic(word));
+        if (phoneticCorrect && !matches.includes(phoneticCorrect.id)) {
+          setMatches([...matches, selected.id]);
+        }
+      } else if (option.type === 'syllable' && option.text === word) {
+        const phoneticCorrect = options.find(o => o.text === getDefaultPhonetic(word));
+        if (phoneticCorrect && !matches.includes(phoneticCorrect.id)) {
+          setMatches([...matches, option.id]);
+        }
+      } else if (selected.type === 'phonetic' && selected.text === getDefaultPhonetic(word)) {
+        const syllableCorrect = options.find(o => o.text === word);
+        if (syllableCorrect && !matches.includes(syllableCorrect.id)) {
+          setMatches([...matches, selected.id]);
+        }
+      } else {
+        onFail?.();
+      }
+      setSelected(null);
+    }
+  };
+
+  const isMatched = (id) => matches.includes(id);
+  const isSelected = (id) => selected?.id === id;
+
+  return (
+    <div className="space-y-4">
+      <div className="text-sm text-gray-500 mb-4">点击单词和对应的音标进行配对</div>
+      <div className="grid grid-cols-2 gap-3">
+        {options.map((option) => (
+          <button
+            key={option.id}
+            onClick={() => handleSelect(option)}
+            disabled={isMatched(option.id)}
+            className={`
+              p-3 rounded-xl text-lg font-medium transition-all
+              ${isMatched(option.id) ? 'bg-green-100 text-green-700 opacity-50' : ''}
+              ${isSelected(option.id) ? 'bg-blue-200 border-2 border-blue-500' : 'bg-gray-100 hover:bg-gray-200'}
+              ${option.type === 'phonetic' ? 'text-purple-700 font-mono' : ''}
+            `}
+          >
+            {option.text}
+          </button>
+        ))}
+      </div>
+      {matches.length >= 2 && (
+        <div className="text-center text-green-600 font-bold mt-4">
+          🎉 配对成功！
+        </div>
+      )}
     </div>
   );
 }
