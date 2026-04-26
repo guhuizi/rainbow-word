@@ -1031,7 +1031,20 @@ function InlinePractice({ word, syllables, onPlayAudio }) {
   const [speakingScore, setSpeakingScore] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
   const [recognizedText, setRecognizedText] = useState('');
+  const [micPermissionGranted, setMicPermissionGranted] = useState(false);
   const recognitionRef = useRef(null);
+
+  useEffect(() => {
+    if (practiceType === 'speaking' && !micPermissionGranted) {
+      navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(() => {
+          setMicPermissionGranted(true);
+        })
+        .catch(() => {
+          setMicPermissionGranted(false);
+        });
+    }
+  }, [practiceType]);
 
   const checkAnswer = () => {
     if (!userAnswer.trim()) return;
@@ -1090,92 +1103,85 @@ function InlinePractice({ word, syllables, onPlayAudio }) {
   };
 
   const startRecording = () => {
-    console.log('1. startRecording called');
-
     if (!window.isSecureContext) {
       alert('语音识别需要 HTTPS 连接，请确保网站使用安全连接');
       return;
     }
-    console.log('2. HTTPS check passed');
 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
       alert('您的浏览器不支持语音识别，请使用 Chrome 或 Edge 浏览器');
       return;
     }
-    console.log('3. SpeechRecognition available');
 
     if (recognitionRef.current) {
       recognitionRef.current.abort();
     }
-    console.log('4. Previous recognition aborted');
 
     setIsRecording(true);
     setRecognizedText('');
     setSpeakingScore(null);
-    console.log('5. State reset');
 
-    navigator.mediaDevices.getUserMedia({ audio: true })
-      .then(() => {
-        console.log('6. Microphone permission granted');
-        const recognition = new SpeechRecognition();
-        recognitionRef.current = recognition;
-        recognition.lang = 'en-US';
-        recognition.continuous = true;
-        recognition.interimResults = true;
-        recognition.maxAlternatives = 1;
+    const startRecognition = () => {
+      console.log('Starting recognition');
+      const recognition = new SpeechRecognition();
+      recognitionRef.current = recognition;
+      recognition.lang = 'en-US';
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
 
-        recognition.onresult = (event) => {
-          console.log('7. Recognition result received', event.results);
-          const results = event.results;
-          const transcript = results[results.length - 1][0].transcript.trim();
-          setRecognizedText(transcript);
+      recognition.onresult = (event) => {
+        const results = event.results;
+        const transcript = results[results.length - 1][0].transcript.trim();
+        setRecognizedText(transcript);
 
-          if (results[results.length - 1].isFinal) {
-            const finalTranscript = transcript;
-            const score = calculateSimilarity(finalTranscript, word);
-            setSpeakingScore(score);
-            setShowResult(true);
-            setIsCorrect(score >= 80);
-            recognition.stop();
-          }
-        };
+        if (results[results.length - 1].isFinal) {
+          const finalTranscript = transcript;
+          const score = calculateSimilarity(finalTranscript, word);
+          setSpeakingScore(score);
+          setShowResult(true);
+          setIsCorrect(score >= 80);
+          recognition.stop();
+        }
+      };
 
-        recognition.onerror = (event) => {
-          console.error('8. Speech recognition error:', event.error);
-          setIsRecording(false);
-          recognitionRef.current = null;
-          if (event.error === 'not-allowed') {
-            alert('请允许麦克风权限后重试');
-          } else if (event.error === 'no-speech') {
-            console.log('No speech detected, try again');
-          } else if (event.error === 'aborted') {
-            console.log('Recognition aborted by user');
-          } else {
-            console.log('Speech recognition error:', event.error);
-          }
-        };
-
-        recognition.onend = () => {
-          console.log('9. Recognition ended');
-          setIsRecording(false);
-          recognitionRef.current = null;
-        };
-
-        console.log('10. About to start recognition');
-        recognition.start();
-        console.log('11. Recognition started');
-      })
-      .catch((err) => {
-        console.error('12. Microphone access error:', err);
+      recognition.onerror = (event) => {
+        console.error('Speech recognition error:', event.error);
         setIsRecording(false);
         recognitionRef.current = null;
-        if (err.name === 'NotAllowedError') {
-          alert('请允许麦克风权限后重试');
-        } else {
-          alert('无法访问麦克风: ' + err.message);
+        if (event.error === 'not-allowed') {
+          setMicPermissionGranted(false);
         }
-      });
+      };
+
+      recognition.onend = () => {
+        console.log('Recognition ended');
+        setIsRecording(false);
+        recognitionRef.current = null;
+      };
+
+      recognition.start();
+    };
+
+    if (micPermissionGranted) {
+      startRecognition();
+    } else {
+      navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(() => {
+          setMicPermissionGranted(true);
+          startRecognition();
+        })
+        .catch((err) => {
+          console.error('Microphone access error:', err);
+          setIsRecording(false);
+          if (err.name === 'NotAllowedError') {
+            alert('请允许麦克风权限后重试');
+          } else {
+            alert('无法访问麦克风: ' + err.message);
+          }
+        });
+    }
   };
 
   const handleNext = () => {
