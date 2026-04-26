@@ -1064,6 +1064,63 @@ function InlinePractice({ word, syllables, onPlayAudio }) {
   const [recognizedText, setRecognizedText] = useState('');
   const [micPermissionGranted, setMicPermissionGranted] = useState(false);
   const recognitionRef = useRef(null);
+  const audioContextRef = useRef(null);
+
+  const playSound = (type) => {
+    try {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      const ctx = audioContextRef.current;
+      const oscillator = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(ctx.destination);
+
+      switch (type) {
+        case 'start':
+          oscillator.frequency.value = 880;
+          oscillator.type = 'sine';
+          gainNode.gain.setValueAtTime(0.3, ctx.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+          oscillator.start(ctx.currentTime);
+          oscillator.stop(ctx.currentTime + 0.15);
+          break;
+        case 'stop':
+          oscillator.frequency.value = 440;
+          oscillator.type = 'sine';
+          gainNode.gain.setValueAtTime(0.3, ctx.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+          oscillator.start(ctx.currentTime);
+          oscillator.stop(ctx.currentTime + 0.2);
+          break;
+        case 'success':
+          oscillator.frequency.value = 523;
+          oscillator.type = 'sine';
+          gainNode.gain.setValueAtTime(0.3, ctx.currentTime);
+          oscillator.start(ctx.currentTime);
+          oscillator.frequency.setValueAtTime(659, ctx.currentTime + 0.1);
+          oscillator.frequency.setValueAtTime(784, ctx.currentTime + 0.2);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
+          oscillator.stop(ctx.currentTime + 0.35);
+          break;
+        case 'fail':
+          oscillator.frequency.value = 200;
+          oscillator.type = 'square';
+          gainNode.gain.setValueAtTime(0.2, ctx.currentTime);
+          oscillator.start(ctx.currentTime);
+          oscillator.frequency.setValueAtTime(150, ctx.currentTime + 0.15);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+          oscillator.stop(ctx.currentTime + 0.3);
+          break;
+        default:
+          break;
+      }
+    } catch (e) {
+      console.log('Audio playback not supported');
+    }
+  };
 
   useEffect(() => {
     if (practiceType === 'speaking' && !micPermissionGranted) {
@@ -1086,9 +1143,13 @@ function InlinePractice({ word, syllables, onPlayAudio }) {
       const correct = userSyllables.length === correctSyllables.length &&
         userSyllables.every((s, i) => s === correctSyllables[i]);
       setIsCorrect(correct);
+      if (correct) playSound('success');
+      else playSound('fail');
     } else if (practiceType === 'spelling') {
       const correct = userAnswer.toLowerCase().trim() === word.toLowerCase();
       setIsCorrect(correct);
+      if (correct) playSound('success');
+      else playSound('fail');
     }
     setShowResult(true);
   };
@@ -1152,6 +1213,7 @@ function InlinePractice({ word, syllables, onPlayAudio }) {
     setIsRecording(true);
     setRecognizedText('');
     setSpeakingScore(null);
+    playSound('start');
 
     const startRecognition = () => {
       console.log('Starting recognition');
@@ -1173,6 +1235,9 @@ function InlinePractice({ word, syllables, onPlayAudio }) {
           setSpeakingScore(score);
           setShowResult(true);
           setIsCorrect(score >= 80);
+          if (score >= 80) playSound('success');
+          else playSound('fail');
+          playSound('stop');
           recognition.stop();
         }
       };
